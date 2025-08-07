@@ -77,8 +77,11 @@ function loadStatistics() {
 }
 
 function loadHistory() {
+  console.log('Loading history...');
   chrome.storage.local.get(['processHistory'], result => {
     const history = result.processHistory || [];
+    console.log('History loaded:', history.length, 'items');
+
     const historyList = document.getElementById('historyList');
     const emptyState = document.getElementById('emptyHistory');
     const filterValue = document.getElementById('historyFilter').value;
@@ -89,9 +92,12 @@ function loadHistory() {
         ? history
         : history.filter(item => item.type === filterValue);
 
+    console.log('Filtered history:', filteredHistory.length, 'items');
+
     if (filteredHistory.length === 0) {
       historyList.style.display = 'none';
       emptyState.style.display = 'block';
+      console.log('Showing empty state');
       return;
     }
 
@@ -130,6 +136,8 @@ function loadHistory() {
     `
       )
       .join('');
+
+    console.log('History rendered:', recentHistory.length, 'items');
   });
 }
 
@@ -235,8 +243,14 @@ function resetSettings() {
 function clearHistory() {
   if (confirm('Are you sure you want to clear all history?')) {
     chrome.storage.local.set({ processHistory: [] }, () => {
-      loadHistory();
-      showToast('History cleared');
+      if (chrome.runtime.lastError) {
+        console.error('Error clearing history:', chrome.runtime.lastError);
+        showToast('Failed to clear history', 'error');
+      } else {
+        console.log('History cleared successfully');
+        loadHistory();
+        showToast('History cleared successfully', 'success');
+      }
     });
   }
 }
