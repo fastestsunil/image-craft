@@ -125,17 +125,34 @@ function loadHistory() {
           </div>
         </div>
         <div class="history-item-actions">
-          <button class="history-btn" onclick="downloadHistoryItem('${
+          <button class="history-btn download-btn" data-id="${
             item.id
-          }')">Download</button>
-          <button class="history-btn" onclick="copyHistoryItem('${
+          }">Download</button>
+          <button class="history-btn copy-btn" data-id="${
             item.id
-          }')">Copy</button>
+          }">Copy</button>
         </div>
       </div>
     `
       )
       .join('');
+
+    // Add event listeners to the newly created buttons
+    historyList.querySelectorAll('.download-btn').forEach(btn => {
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        const id = btn.getAttribute('data-id');
+        downloadHistoryItem(id);
+      });
+    });
+
+    historyList.querySelectorAll('.copy-btn').forEach(btn => {
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        const id = btn.getAttribute('data-id');
+        copyHistoryItem(id);
+      });
+    });
 
     console.log('History rendered:', recentHistory.length, 'items');
   });
@@ -255,38 +272,109 @@ function clearHistory() {
   }
 }
 
-// Global functions for history actions
-window.downloadHistoryItem = function (id) {
+// History action functions
+function downloadHistoryItem(id) {
+  console.log('Downloading history item:', id);
+
+  // Show loading state on the button
+  const downloadBtn = document.querySelector(`[data-id="${id}"].download-btn`);
+  if (downloadBtn) {
+    downloadBtn.classList.add('loading');
+    downloadBtn.textContent = 'Downloading...';
+  }
+
   chrome.storage.local.get(['processHistory'], result => {
     const history = result.processHistory || [];
     const item = history.find(h => h.id === id);
     if (item) {
-      chrome.downloads.download({
-        url: item.url,
-        filename: item.filename,
-      });
-      showToast('Download started');
+      console.log('Found item to download:', item);
+      chrome.downloads.download(
+        {
+          url: item.url,
+          filename: item.filename,
+          saveAs: false,
+        },
+        downloadId => {
+          // Reset button state
+          if (downloadBtn) {
+            downloadBtn.classList.remove('loading');
+            downloadBtn.textContent = 'Download';
+          }
+
+          if (chrome.runtime.lastError) {
+            console.error('Download failed:', chrome.runtime.lastError);
+            showToast('Download failed', 'error');
+          } else {
+            console.log('Download started, ID:', downloadId);
+            showToast('Download started successfully', 'success');
+          }
+        }
+      );
+    } else {
+      // Reset button state
+      if (downloadBtn) {
+        downloadBtn.classList.remove('loading');
+        downloadBtn.textContent = 'Download';
+      }
+      console.error('Item not found:', id);
+      showToast('Item not found', 'error');
     }
   });
-};
+}
 
-window.copyHistoryItem = function (id) {
+function copyHistoryItem(id) {
+  console.log('Copying history item:', id);
+
+  // Show loading state on the button
+  const copyBtn = document.querySelector(`[data-id="${id}"].copy-btn`);
+  if (copyBtn) {
+    copyBtn.classList.add('loading');
+    copyBtn.textContent = 'Copying...';
+  }
+
   chrome.storage.local.get(['processHistory'], result => {
     const history = result.processHistory || [];
     const item = history.find(h => h.id === id);
     if (item) {
+      console.log('Found item to copy:', item);
       fetch(item.url)
-        .then(res => res.blob())
+        .then(res => {
+          if (!res.ok) throw new Error('Failed to fetch image');
+          return res.blob();
+        })
         .then(blob => {
           const clipboardItem = new ClipboardItem({ [blob.type]: blob });
-          navigator.clipboard
-            .write([clipboardItem])
-            .then(() => showToast('Image copied to clipboard'))
-            .catch(err => showToast('Failed to copy image', 'error'));
+          return navigator.clipboard.write([clipboardItem]);
+        })
+        .then(() => {
+          // Reset button state
+          if (copyBtn) {
+            copyBtn.classList.remove('loading');
+            copyBtn.textContent = 'Copy';
+          }
+          console.log('Image copied to clipboard successfully');
+          showToast('Image copied to clipboard', 'success');
+        })
+        .catch(err => {
+          // Reset button state
+          if (copyBtn) {
+            copyBtn.classList.remove('loading');
+            copyBtn.textContent = 'Copy';
+          }
+          console.error('Copy failed:', err);
+          showToast('Failed to copy image', 'error');
         });
+    } else {
+      // Reset button state
+      if (copyBtn) {
+        copyBtn.classList.remove('loading');
+        copyBtn.textContent = 'Copy';
+      }
+      console.error('Item not found:', id);
+      showToast('Item not found', 'error');
     }
   });
-};
+}
 
 function openHelp() {
   chrome.tabs.create({
