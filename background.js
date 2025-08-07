@@ -329,44 +329,63 @@ async function removeBackground(imageUrl, settings) {
   const uploadPreset =
     settings.cloudinaryUploadPreset || CLOUDINARY_UPLOAD_PRESET;
 
+  console.log('Starting background removal with Cloudinary AI...');
+
+  // First, upload the image to Cloudinary
   const uploadUrl = `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`;
 
   const formData = new FormData();
   formData.append('file', imageUrl);
   formData.append('upload_preset', uploadPreset);
-  // Note: background_removal is also not allowed in unsigned uploads
-  // We'll need to use a different approach or use Remove.bg API
 
-  const response = await fetch(uploadUrl, {
-    method: 'POST',
-    body: formData,
-  });
+  try {
+    const response = await fetch(uploadUrl, {
+      method: 'POST',
+      body: formData,
+    });
 
-  if (!response.ok) {
+    const data = await response.json();
+    console.log('Image uploaded for background removal:', data);
+
+    if (!response.ok) {
+      console.error('Upload failed:', data);
+      // Fallback to Remove.bg API if available
+      const apiKey = settings.removeBgApiKey || REMOVE_BG_API_KEY;
+      if (apiKey) {
+        console.log('Falling back to Remove.bg API...');
+        return await removeBackgroundWithAPI(imageUrl, apiKey);
+      }
+      throw new Error(
+        `Upload failed: ${data.error?.message || 'Unknown error'}`
+      );
+    }
+
+    // Build URL with background removal transformation
+    const publicId = data.public_id;
+    const version = data.version ? `v${data.version}/` : '';
+
+    // Use Cloudinary's built-in background removal effect (e_background_removal)
+    // Combined with PNG format for transparency
+    const bgRemovedUrl = `https://res.cloudinary.com/${cloudName}/image/upload/e_background_removal/f_png/${version}${publicId}`;
+
+    console.log('Background removed URL:', bgRemovedUrl);
+
+    // Note: First request might take a few seconds as Cloudinary processes the image
+    // Subsequent requests will be cached
+
+    return bgRemovedUrl;
+  } catch (error) {
+    console.error('Background removal error:', error);
+
+    // Try Remove.bg API as fallback if available
     const apiKey = settings.removeBgApiKey || REMOVE_BG_API_KEY;
     if (apiKey) {
+      console.log('Attempting Remove.bg API as fallback...');
       return await removeBackgroundWithAPI(imageUrl, apiKey);
     }
-    throw new Error(
-      'Background removal requires Remove.bg API key for unsigned uploads'
-    );
+
+    throw error;
   }
-
-  const data = await response.json();
-
-  // For background removal, we need to either:
-  // 1. Use Remove.bg API (preferred for unsigned)
-  // 2. Or configure the upload preset in Cloudinary to include background removal
-
-  // Return PNG format URL
-  const publicId = data.public_id;
-  const version = data.version ? `v${data.version}/` : '';
-  const pngUrl = `https://res.cloudinary.com/${cloudName}/image/upload/f_png/${version}${publicId}`;
-
-  console.log(
-    'Note: Background removal with unsigned uploads requires Remove.bg API or preset configuration'
-  );
-  return pngUrl;
 }
 
 async function removeBackgroundWithAPI(imageUrl, apiKey) {
