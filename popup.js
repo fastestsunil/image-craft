@@ -23,7 +23,7 @@ function showView(viewName) {
   // Update header
   const backButton = document.getElementById('backButton');
   const headerTitle = document.getElementById('headerTitle');
-
+  
   if (viewName === 'main') {
     backButton.style.display = 'none';
     headerTitle.textContent = 'ImageCraft';
@@ -35,6 +35,13 @@ function showView(viewName) {
   // Load history if showing history view
   if (viewName === 'history') {
     loadHistory();
+    // Ensure clear history button has event listener
+    attachClearHistoryListener();
+    
+    // Fallback: try again after a short delay
+    setTimeout(() => {
+      attachClearHistoryListener();
+    }, 100);
   }
 
   currentView = viewName;
@@ -204,17 +211,27 @@ function attachEventListeners() {
     .getElementById('resetSettings')
     .addEventListener('click', resetSettings);
 
-  // History
+  // History filter
   document
     .getElementById('historyFilter')
     .addEventListener('change', loadHistory);
-  document
-    .getElementById('clearHistory')
-    .addEventListener('click', clearHistory);
 
   // Footer links
   document.getElementById('help').addEventListener('click', openHelp);
   document.getElementById('about').addEventListener('click', openAbout);
+}
+
+function attachClearHistoryListener() {
+  const clearHistoryBtn = document.getElementById('clearHistory');
+  if (clearHistoryBtn) {
+    // Remove existing listener to prevent duplicates
+    clearHistoryBtn.removeEventListener('click', clearHistory);
+    // Add new listener
+    clearHistoryBtn.addEventListener('click', clearHistory);
+    console.log('Clear history button listener attached');
+  } else {
+    console.error('Clear history button not found');
+  }
 }
 
 function saveSettings() {
@@ -258,17 +275,44 @@ function resetSettings() {
 }
 
 function clearHistory() {
-  if (confirm('Are you sure you want to clear all history?')) {
+  console.log('Clear history button clicked');
+  
+  if (confirm('Are you sure you want to clear all history? This action cannot be undone.')) {
+    console.log('User confirmed clear history');
+    
+    // Show loading state on the button
+    const clearBtn = document.getElementById('clearHistory');
+    if (clearBtn) {
+      clearBtn.textContent = 'Clearing...';
+      clearBtn.disabled = true;
+    }
+    
     chrome.storage.local.set({ processHistory: [] }, () => {
+      // Reset button state
+      if (clearBtn) {
+        clearBtn.textContent = 'Clear All';
+        clearBtn.disabled = false;
+      }
+      
       if (chrome.runtime.lastError) {
         console.error('Error clearing history:', chrome.runtime.lastError);
         showToast('Failed to clear history', 'error');
       } else {
         console.log('History cleared successfully');
         loadHistory();
-        showToast('History cleared successfully', 'success');
+        showToast('All history cleared successfully', 'success');
+        
+        // Also reset statistics
+        chrome.storage.local.set({ 
+          imagesProcessed: 0, 
+          backgroundsRemoved: 0 
+        }, () => {
+          loadStatistics();
+        });
       }
     });
+  } else {
+    console.log('User cancelled clear history');
   }
 }
 
