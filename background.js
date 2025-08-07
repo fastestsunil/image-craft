@@ -1,5 +1,6 @@
-const CLOUDINARY_CLOUD_NAME = 'demo';
-const CLOUDINARY_UPLOAD_PRESET = 'unsigned_preset';
+// Default values - users must configure their own
+const CLOUDINARY_CLOUD_NAME = '';
+const CLOUDINARY_UPLOAD_PRESET = '';
 const REMOVE_BG_API_KEY = '';
 
 chrome.runtime.onInstalled.addListener(() => {
@@ -150,23 +151,36 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
 
 async function saveImageAs(imageUrl, format, tabId) {
   try {
+    console.log('Starting image conversion:', { imageUrl, format });
     showLoadingIndicator(tabId, 'Converting image...');
 
     const processedUrl = await processImageWithCloudinary(imageUrl, format);
+    console.log('Image processed, URL:', processedUrl);
 
     const filename = generateFilename(imageUrl, format);
+    console.log('Generated filename:', filename);
 
     chrome.downloads.download(
       {
         url: processedUrl,
         filename: filename,
-        saveAs: true,
+        saveAs: false, // Changed to false for automatic download
       },
       downloadId => {
         hideLoadingIndicator(tabId);
         if (chrome.runtime.lastError) {
-          showNotification('Error', 'Failed to download image');
+          console.error('Download failed:', chrome.runtime.lastError);
+          showNotification(
+            'Error',
+            `Download failed: ${chrome.runtime.lastError.message}`
+          );
+          // Show error in page as well
+          showPageError(
+            tabId,
+            `Download failed: ${chrome.runtime.lastError.message}`
+          );
         } else {
+          console.log('Download started, ID:', downloadId);
           showNotification('Success', `Image saved as ${format.toUpperCase()}`);
           addToHistory({
             url: processedUrl,
@@ -181,8 +195,10 @@ async function saveImageAs(imageUrl, format, tabId) {
       }
     );
   } catch (error) {
+    console.error('Error in saveImageAs:', error);
     hideLoadingIndicator(tabId);
-    throw error;
+    showNotification('Error', error.message || 'Failed to process image');
+    showPageError(tabId, error.message || 'Failed to process image');
   }
 }
 
@@ -249,24 +265,63 @@ async function processImageWithCloudinary(imageUrl, format) {
   const uploadPreset =
     settings.cloudinaryUploadPreset || CLOUDINARY_UPLOAD_PRESET;
 
+  console.log('Cloudinary settings:', { cloudName, uploadPreset });
+
+  if (!cloudName || cloudName.trim() === '') {
+    throw new Error(
+      'Please configure your Cloudinary cloud name in extension settings'
+    );
+  }
+
+  if (!uploadPreset || uploadPreset.trim() === '') {
+    throw new Error(
+      'Please configure your Cloudinary upload preset in extension settings'
+    );
+  }
+
   const uploadUrl = `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`;
+  console.log('Upload URL:', uploadUrl);
 
   const formData = new FormData();
   formData.append('file', imageUrl);
   formData.append('upload_preset', uploadPreset);
-  formData.append('format', format);
+  // Don't add format here - unsigned uploads don't allow it
 
-  const response = await fetch(uploadUrl, {
-    method: 'POST',
-    body: formData,
-  });
+  try {
+    const response = await fetch(uploadUrl, {
+      method: 'POST',
+      body: formData,
+    });
 
-  if (!response.ok) {
-    throw new Error('Failed to process image with Cloudinary');
+    const data = await response.json();
+    console.log('Cloudinary response:', data);
+
+    if (!response.ok) {
+      console.error('Cloudinary error:', data);
+      if (data.error) {
+        throw new Error(`Cloudinary error: ${data.error.message}`);
+      }
+      throw new Error('Failed to process image with Cloudinary');
+    }
+
+    // Now apply format transformation in the URL
+    if (data.secure_url) {
+      // Extract the public_id and build a new URL with format transformation
+      const publicId = data.public_id;
+      const version = data.version ? `v${data.version}/` : '';
+
+      // Build URL with format transformation
+      const transformedUrl = `https://res.cloudinary.com/${cloudName}/image/upload/f_${format}/${version}${publicId}`;
+      console.log('Transformed URL with format:', transformedUrl);
+
+      return transformedUrl;
+    }
+
+    return data.secure_url;
+  } catch (error) {
+    console.error('Fetch error:', error);
+    throw error;
   }
-
-  const data = await response.json();
-  return data.secure_url;
 }
 
 async function removeBackground(imageUrl, settings) {
@@ -279,8 +334,8 @@ async function removeBackground(imageUrl, settings) {
   const formData = new FormData();
   formData.append('file', imageUrl);
   formData.append('upload_preset', uploadPreset);
-  formData.append('background_removal', 'cloudinary_ai');
-  formData.append('format', 'png');
+  // Note: background_removal is also not allowed in unsigned uploads
+  // We'll need to use a different approach or use Remove.bg API
 
   const response = await fetch(uploadUrl, {
     method: 'POST',
@@ -292,11 +347,26 @@ async function removeBackground(imageUrl, settings) {
     if (apiKey) {
       return await removeBackgroundWithAPI(imageUrl, apiKey);
     }
-    throw new Error('Failed to remove background');
+    throw new Error(
+      'Background removal requires Remove.bg API key for unsigned uploads'
+    );
   }
 
   const data = await response.json();
-  return data.secure_url;
+
+  // For background removal, we need to either:
+  // 1. Use Remove.bg API (preferred for unsigned)
+  // 2. Or configure the upload preset in Cloudinary to include background removal
+
+  // Return PNG format URL
+  const publicId = data.public_id;
+  const version = data.version ? `v${data.version}/` : '';
+  const pngUrl = `https://res.cloudinary.com/${cloudName}/image/upload/f_png/${version}${publicId}`;
+
+  console.log(
+    'Note: Background removal with unsigned uploads requires Remove.bg API or preset configuration'
+  );
+  return pngUrl;
 }
 
 async function removeBackgroundWithAPI(imageUrl, apiKey) {
@@ -420,12 +490,55 @@ function hideLoadingIndicator(tabId) {
 }
 
 function showNotification(title, message) {
-  chrome.notifications.create({
-    type: 'basic',
-    iconUrl: 'icons/icon128.png',
-    title: title,
-    message: message,
-    priority: 1,
+  // Check if we have notification permission
+  if (chrome.notifications) {
+    chrome.notifications.create({
+      type: 'basic',
+      iconUrl: 'icons/icon128.png',
+      title: title,
+      message: message,
+      priority: 1,
+    });
+  }
+  console.log(`Notification: ${title} - ${message}`);
+}
+
+function showPageError(tabId, message) {
+  chrome.scripting.executeScript({
+    target: { tabId: tabId },
+    func: errorMessage => {
+      const errorDiv = document.createElement('div');
+      errorDiv.id = 'imagecraft-error';
+      errorDiv.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: #ef4444;
+        color: white;
+        padding: 15px 20px;
+        border-radius: 8px;
+        font-family: system-ui, -apple-system, sans-serif;
+        font-size: 14px;
+        z-index: 999999;
+        max-width: 400px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      `;
+      errorDiv.textContent = errorMessage;
+
+      // Remove any existing error
+      const existing = document.getElementById('imagecraft-error');
+      if (existing) existing.remove();
+
+      document.body.appendChild(errorDiv);
+
+      // Auto-remove after 5 seconds
+      setTimeout(() => {
+        if (errorDiv.parentNode) {
+          errorDiv.remove();
+        }
+      }, 5000);
+    },
+    args: [message],
   });
 }
 

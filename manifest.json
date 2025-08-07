@@ -9,12 +9,12 @@
     "storage",
     "downloads",
     "clipboardWrite",
-    "scripting"
+    "scripting",
+    "notifications"
   ],
   "host_permissions": ["<all_urls>"],
   "background": {
-    "service_worker": "background.js",
-    "type": "module"
+    "service_worker": "background.js"
   },
   "content_scripts": [
     {
