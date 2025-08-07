@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Icon Generator</title>
+  </head>
+  <body>
+    <h1>ImageCraft Icon Generator</h1>
+    <p>Open this file in a browser and save the generated icons</p>
+
+    <div id="icons"></div>
+
+    <script>
+      const svgContent = `<svg width="SIZE" height="SIZE" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect width="128" height="128" rx="24" fill="url(#gradient)"/>
+      <path d="M40 48C40 43.5817 43.5817 40 48 40H80C84.4183 40 88 43.5817 88 48V80C88 84.4183 84.4183 88 80 88H48C43.5817 88 40 84.4183 40 80V48Z" fill="white" fill-opacity="0.9"/>
+      <circle cx="56" cy="56" r="8" fill="url(#gradient2)"/>
+      <path d="M40 72L52 60L64 72L76 60L88 72V80C88 84.4183 84.4183 88 80 88H48C43.5817 88 40 84.4183 40 80V72Z" fill="url(#gradient3)" fill-opacity="0.8"/>
+      <rect x="72" y="72" width="32" height="32" rx="8" fill="white" stroke="url(#gradient)" stroke-width="4"/>
+      <path d="M82 88L88 94L94 82" stroke="url(#gradient)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+      <defs>
+        <linearGradient id="gradient" x1="0" y1="0" x2="128" y2="128" gradientUnits="userSpaceOnUse">
+          <stop stop-color="#667eea"/>
+          <stop offset="1" stop-color="#764ba2"/>
+        </linearGradient>
+        <linearGradient id="gradient2" x1="48" y1="48" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+          <stop stop-color="#f59e0b"/>
+          <stop offset="1" stop-color="#ef4444"/>
+        </linearGradient>
+        <linearGradient id="gradient3" x1="40" y1="60" x2="88" y2="88" gradientUnits="userSpaceOnUse">
+          <stop stop-color="#34d399"/>
+          <stop offset="1" stop-color="#10b981"/>
+        </linearGradient>
+      </defs>
+    </svg>`;
+
+      const sizes = [16, 32, 48, 128];
+      const container = document.getElementById('icons');
+
+      sizes.forEach(size => {
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+
+        const svg = svgContent.replace(/SIZE/g, size);
+        const blob = new Blob([svg], { type: 'image/svg+xml' });
+        const url = URL.createObjectURL(blob);
+
+        const img = new Image();
+        img.onload = function () {
+          ctx.drawImage(img, 0, 0, size, size);
+
+          const div = document.createElement('div');
+          div.style.margin = '20px';
+          div.innerHTML = `
+          <h3>icon${size}.png</h3>
+          <canvas></canvas>
+          <br>
+          <a download="icon${size}.png" href="${canvas.toDataURL()}">Download icon${size}.png</a>
+        `;
+          div.querySelector('canvas').replaceWith(canvas);
+          container.appendChild(div);
+
+          URL.revokeObjectURL(url);
+        };
+        img.src = url;
+      });
+    </script>
+  </body>
+</html>

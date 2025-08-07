@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ImageCraft Settings</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <div class="container">
+      <header>
+        <img src="icons/icon48.png" alt="ImageCraft" class="logo" />
+        <h1>ImageCraft</h1>
+      </header>
+
+      <div class="section">
+        <h2>Quick Actions</h2>
+        <div class="quick-actions">
+          <button id="openOptions" class="btn btn-primary">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="3"></circle>
+              <path d="M12 1v6m0 6v6m11-7h-6m-6 0H1"></path>
+            </svg>
+            Settings
+          </button>
+          <button id="viewHistory" class="btn btn-secondary">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path d="M12 2v6l3 3"></path>
+              <circle cx="12" cy="12" r="10"></circle>
+            </svg>
+            History
+          </button>
+        </div>
+      </div>
+
+      <div class="section">
+        <h2>Statistics</h2>
+        <div class="stats">
+          <div class="stat-item">
+            <span class="stat-value" id="imagesProcessed">0</span>
+            <span class="stat-label">Images Processed</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-value" id="bgRemoved">0</span>
+            <span class="stat-label">Backgrounds Removed</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <h2>Cloudinary Settings</h2>
+        <div class="form-group">
+          <label for="cloudName">Cloud Name</label>
+          <input
+            type="text"
+            id="cloudName"
+            placeholder="Your Cloudinary cloud name"
+          />
+        </div>
+        <div class="form-group">
+          <label for="uploadPreset">Upload Preset</label>
+          <input
+            type="text"
+            id="uploadPreset"
+            placeholder="Unsigned upload preset"
+          />
+        </div>
+      </div>
+
+      <div class="section">
+        <h2>Background Removal</h2>
+        <div class="form-group">
+          <label for="removeBgKey">Remove.bg API Key (Optional)</label>
+          <input
+            type="password"
+            id="removeBgKey"
+            placeholder="Your Remove.bg API key"
+          />
+          <small>Leave empty to use Cloudinary AI background removal</small>
+        </div>
+      </div>
+
+      <div class="section">
+        <h2>Default Settings</h2>
+        <div class="form-group">
+          <label for="defaultFormat">Default Save Format</label>
+          <select id="defaultFormat">
+            <option value="png">PNG</option>
+            <option value="jpg">JPG</option>
+            <option value="webp">WEBP</option>
+          </select>
+        </div>
+        <div class="form-group checkbox">
+          <input type="checkbox" id="autoDownload" />
+          <label for="autoDownload">Auto-download processed images</label>
+        </div>
+        <div class="form-group checkbox">
+          <input type="checkbox" id="showNotifications" />
+          <label for="showNotifications">Show notifications</label>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button id="saveSettings" class="btn btn-success">Save Settings</button>
+        <button id="resetSettings" class="btn btn-danger">
+          Reset to Default
+        </button>
+      </div>
+
+      <footer>
+        <a href="#" id="help">Help</a>
+        <span>•</span>
+        <a href="#" id="about">About</a>
+        <span>•</span>
+        <span>v1.0.0</span>
+      </footer>
+    </div>
+
+    <div id="toast" class="toast"></div>
+
+    <script src="popup.js"></script>
+  </body>
+</html>
