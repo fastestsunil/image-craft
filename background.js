@@ -207,18 +207,56 @@ async function copyImageAs(imageUrl, format, tabId) {
     showLoadingIndicator(tabId, 'Converting image...');
 
     const processedUrl = await processImageWithCloudinary(imageUrl, format);
+    console.log('Image processed for copy, URL:', processedUrl);
 
     const response = await fetch(processedUrl);
     const blob = await response.blob();
 
+    // Copy to clipboard
     await chrome.scripting.executeScript({
       target: { tabId: tabId },
       func: copyBlobToClipboard,
       args: [await blobToBase64(blob), blob.type],
     });
 
+    // Also auto-download the image
+    const filename = generateFilename(imageUrl, format);
+    console.log('Auto-downloading copied image:', filename);
+
+    chrome.downloads.download(
+      {
+        url: processedUrl,
+        filename: `copied_${filename}`,
+        saveAs: false, // Auto-download without dialog
+      },
+      downloadId => {
+        if (chrome.runtime.lastError) {
+          console.error('Auto-download failed:', chrome.runtime.lastError);
+        } else {
+          console.log(
+            'Auto-download started for copied image, ID:',
+            downloadId
+          );
+        }
+      }
+    );
+
     hideLoadingIndicator(tabId);
-    showNotification('Success', `Image copied as ${format.toUpperCase()}`);
+    showNotification(
+      'Success',
+      `Image copied and saved as ${format.toUpperCase()}`
+    );
+
+    // Add to history
+    addToHistory({
+      url: processedUrl,
+      originalUrl: imageUrl,
+      format: format,
+      filename: filename,
+      type: 'copied',
+      date: new Date().toISOString(),
+    });
+    updateStatistics('imagesProcessed');
   } catch (error) {
     hideLoadingIndicator(tabId);
     throw error;
@@ -235,20 +273,43 @@ async function copyImageWithoutBackground(imageUrl, tabId) {
     const response = await fetch(bgRemovedUrl);
     const blob = await response.blob();
 
+    // Copy to clipboard
     await chrome.scripting.executeScript({
       target: { tabId: tabId },
       func: copyBlobToClipboard,
       args: [await blobToBase64(blob), 'image/png'],
     });
 
+    // Also auto-download the image with background removed
+    const filename = `no_bg_${generateFilename(imageUrl, 'png')}`;
+    console.log('Auto-downloading background-removed image:', filename);
+
+    chrome.downloads.download(
+      {
+        url: bgRemovedUrl,
+        filename: filename,
+        saveAs: false, // Auto-download without dialog
+      },
+      downloadId => {
+        if (chrome.runtime.lastError) {
+          console.error('Auto-download failed:', chrome.runtime.lastError);
+        } else {
+          console.log(
+            'Auto-download started for bg-removed image, ID:',
+            downloadId
+          );
+        }
+      }
+    );
+
     hideLoadingIndicator(tabId);
-    showNotification('Success', 'Image copied without background');
+    showNotification('Success', 'Image copied and saved without background');
 
     addToHistory({
       url: bgRemovedUrl,
       originalUrl: imageUrl,
       format: 'png',
-      filename: generateFilename(imageUrl, 'png'),
+      filename: filename,
       type: 'bg-removed',
       date: new Date().toISOString(),
     });

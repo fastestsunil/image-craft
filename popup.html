@@ -9,116 +9,184 @@
   <body>
     <div class="container">
       <header>
+        <button id="backButton" class="back-btn" style="display: none">
+          <svg
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path d="M19 12H5M12 19l-7-7 7-7" />
+          </svg>
+        </button>
         <img src="icons/icon48.png" alt="ImageCraft" class="logo" />
-        <h1>ImageCraft</h1>
+        <h1 id="headerTitle">ImageCraft</h1>
       </header>
 
-      <div class="section">
-        <h2>Quick Actions</h2>
-        <div class="quick-actions">
-          <button id="openOptions" class="btn btn-primary">
+      <!-- Main View -->
+      <div id="mainView" class="view">
+        <div class="section">
+          <h2>Quick Actions</h2>
+          <div class="quick-actions">
+            <button id="showSettingsBtn" class="btn btn-primary">
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <circle cx="12" cy="12" r="3"></circle>
+                <path d="M12 1v6m0 6v6m11-7h-6m-6 0H1"></path>
+              </svg>
+              Settings
+            </button>
+            <button id="showHistoryBtn" class="btn btn-secondary">
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path d="M12 2v6l3 3"></path>
+                <circle cx="12" cy="12" r="10"></circle>
+              </svg>
+              History
+            </button>
+          </div>
+        </div>
+
+        <div class="section">
+          <h2>Statistics</h2>
+          <div class="stats">
+            <div class="stat-item">
+              <span class="stat-value" id="imagesProcessed">0</span>
+              <span class="stat-label">Images Processed</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-value" id="bgRemoved">0</span>
+              <span class="stat-label">Backgrounds Removed</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="section">
+          <h2>Quick Tips</h2>
+          <ul class="tips-list">
+            <li>Right-click any image to see ImageCraft options</li>
+            <li>All copied images are also auto-downloaded</li>
+            <li>Check history to re-download past conversions</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Settings View -->
+      <div id="settingsView" class="view" style="display: none">
+        <div class="section">
+          <h2>Cloudinary Settings</h2>
+          <div class="form-group">
+            <label for="cloudName">Cloud Name</label>
+            <input
+              type="text"
+              id="cloudName"
+              placeholder="Your Cloudinary cloud name"
+            />
+          </div>
+          <div class="form-group">
+            <label for="uploadPreset">Upload Preset</label>
+            <input
+              type="text"
+              id="uploadPreset"
+              placeholder="Unsigned upload preset"
+            />
+          </div>
+        </div>
+
+        <div class="section">
+          <h2>Background Removal</h2>
+          <div class="form-group">
+            <label for="removeBgKey">Remove.bg API Key (Optional)</label>
+            <input
+              type="password"
+              id="removeBgKey"
+              placeholder="Your Remove.bg API key"
+            />
+            <small>Leave empty to use Cloudinary AI background removal</small>
+          </div>
+        </div>
+
+        <div class="section">
+          <h2>Default Settings</h2>
+          <div class="form-group">
+            <label for="defaultFormat">Default Save Format</label>
+            <select id="defaultFormat">
+              <option value="png">PNG</option>
+              <option value="jpg">JPG</option>
+              <option value="webp">WEBP</option>
+            </select>
+          </div>
+          <div class="form-group checkbox">
+            <input type="checkbox" id="autoDownload" checked />
+            <label for="autoDownload">Auto-download all processed images</label>
+          </div>
+          <div class="form-group checkbox">
+            <input type="checkbox" id="showNotifications" checked />
+            <label for="showNotifications">Show notifications</label>
+          </div>
+        </div>
+
+        <div class="actions">
+          <button id="saveSettings" class="btn btn-success">
+            Save Settings
+          </button>
+          <button id="resetSettings" class="btn btn-danger">
+            Reset to Default
+          </button>
+        </div>
+      </div>
+
+      <!-- History View -->
+      <div id="historyView" class="view" style="display: none">
+        <div class="section">
+          <div class="history-header">
+            <h2>Processing History</h2>
+            <button id="clearHistory" class="btn btn-small btn-danger">
+              Clear All
+            </button>
+          </div>
+          <div class="history-filters">
+            <select id="historyFilter" class="filter-select">
+              <option value="all">All Images</option>
+              <option value="converted">Converted</option>
+              <option value="copied">Copied</option>
+              <option value="bg-removed">Background Removed</option>
+            </select>
+          </div>
+          <div id="historyList" class="history-list">
+            <!-- History items will be loaded here -->
+          </div>
+          <div id="emptyHistory" class="empty-state" style="display: none">
             <svg
-              width="16"
-              height="16"
+              width="48"
+              height="48"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
               stroke-width="2"
+              opacity="0.3"
             >
-              <circle cx="12" cy="12" r="3"></circle>
-              <path d="M12 1v6m0 6v6m11-7h-6m-6 0H1"></path>
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+              <circle cx="8.5" cy="8.5" r="1.5"></circle>
+              <polyline points="21 15 16 10 5 21"></polyline>
             </svg>
-            Settings
-          </button>
-          <button id="viewHistory" class="btn btn-secondary">
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-            >
-              <path d="M12 2v6l3 3"></path>
-              <circle cx="12" cy="12" r="10"></circle>
-            </svg>
-            History
-          </button>
-        </div>
-      </div>
-
-      <div class="section">
-        <h2>Statistics</h2>
-        <div class="stats">
-          <div class="stat-item">
-            <span class="stat-value" id="imagesProcessed">0</span>
-            <span class="stat-label">Images Processed</span>
-          </div>
-          <div class="stat-item">
-            <span class="stat-value" id="bgRemoved">0</span>
-            <span class="stat-label">Backgrounds Removed</span>
+            <p>No images processed yet</p>
           </div>
         </div>
-      </div>
-
-      <div class="section">
-        <h2>Cloudinary Settings</h2>
-        <div class="form-group">
-          <label for="cloudName">Cloud Name</label>
-          <input
-            type="text"
-            id="cloudName"
-            placeholder="Your Cloudinary cloud name"
-          />
-        </div>
-        <div class="form-group">
-          <label for="uploadPreset">Upload Preset</label>
-          <input
-            type="text"
-            id="uploadPreset"
-            placeholder="Unsigned upload preset"
-          />
-        </div>
-      </div>
-
-      <div class="section">
-        <h2>Background Removal</h2>
-        <div class="form-group">
-          <label for="removeBgKey">Remove.bg API Key (Optional)</label>
-          <input
-            type="password"
-            id="removeBgKey"
-            placeholder="Your Remove.bg API key"
-          />
-          <small>Leave empty to use Cloudinary AI background removal</small>
-        </div>
-      </div>
-
-      <div class="section">
-        <h2>Default Settings</h2>
-        <div class="form-group">
-          <label for="defaultFormat">Default Save Format</label>
-          <select id="defaultFormat">
-            <option value="png">PNG</option>
-            <option value="jpg">JPG</option>
-            <option value="webp">WEBP</option>
-          </select>
-        </div>
-        <div class="form-group checkbox">
-          <input type="checkbox" id="autoDownload" />
-          <label for="autoDownload">Auto-download processed images</label>
-        </div>
-        <div class="form-group checkbox">
-          <input type="checkbox" id="showNotifications" />
-          <label for="showNotifications">Show notifications</label>
-        </div>
-      </div>
-
-      <div class="actions">
-        <button id="saveSettings" class="btn btn-success">Save Settings</button>
-        <button id="resetSettings" class="btn btn-danger">
-          Reset to Default
-        </button>
       </div>
 
       <footer>

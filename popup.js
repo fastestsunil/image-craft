@@ -1,8 +1,44 @@
+// View management
+let currentView = 'main';
+
 document.addEventListener('DOMContentLoaded', () => {
   loadSettings();
   loadStatistics();
   attachEventListeners();
+  showView('main');
 });
+
+function showView(viewName) {
+  // Hide all views
+  document.querySelectorAll('.view').forEach(view => {
+    view.style.display = 'none';
+  });
+
+  // Show selected view
+  const viewElement = document.getElementById(`${viewName}View`);
+  if (viewElement) {
+    viewElement.style.display = 'block';
+  }
+
+  // Update header
+  const backButton = document.getElementById('backButton');
+  const headerTitle = document.getElementById('headerTitle');
+
+  if (viewName === 'main') {
+    backButton.style.display = 'none';
+    headerTitle.textContent = 'ImageCraft';
+  } else {
+    backButton.style.display = 'flex';
+    headerTitle.textContent = viewName === 'settings' ? 'Settings' : 'History';
+  }
+
+  // Load history if showing history view
+  if (viewName === 'history') {
+    loadHistory();
+  }
+
+  currentView = viewName;
+}
 
 function loadSettings() {
   chrome.storage.sync.get(
@@ -40,15 +76,118 @@ function loadStatistics() {
   });
 }
 
+function loadHistory() {
+  chrome.storage.local.get(['processHistory'], result => {
+    const history = result.processHistory || [];
+    const historyList = document.getElementById('historyList');
+    const emptyState = document.getElementById('emptyHistory');
+    const filterValue = document.getElementById('historyFilter').value;
+
+    // Filter history based on selected filter
+    const filteredHistory =
+      filterValue === 'all'
+        ? history
+        : history.filter(item => item.type === filterValue);
+
+    if (filteredHistory.length === 0) {
+      historyList.style.display = 'none';
+      emptyState.style.display = 'block';
+      return;
+    }
+
+    historyList.style.display = 'block';
+    emptyState.style.display = 'none';
+
+    // Display only last 20 items for performance
+    const recentHistory = filteredHistory.slice(0, 20);
+
+    historyList.innerHTML = recentHistory
+      .map(
+        item => `
+      <div class="history-item" data-id="${item.id}">
+        <img src="${item.url}" alt="${
+          item.filename
+        }" class="history-item-thumb" onerror="this.src='icons/icon48.png'">
+        <div class="history-item-info">
+          <div class="history-item-name" title="${item.filename}">${
+          item.filename
+        }</div>
+          <div class="history-item-meta">
+            ${item.format.toUpperCase()} • ${formatDate(
+          item.date
+        )} • ${getTypeLabel(item.type)}
+          </div>
+        </div>
+        <div class="history-item-actions">
+          <button class="history-btn" onclick="downloadHistoryItem('${
+            item.id
+          }')">Download</button>
+          <button class="history-btn" onclick="copyHistoryItem('${
+            item.id
+          }')">Copy</button>
+        </div>
+      </div>
+    `
+      )
+      .join('');
+  });
+}
+
+function getTypeLabel(type) {
+  const labels = {
+    converted: 'Converted',
+    copied: 'Copied',
+    'bg-removed': 'BG Removed',
+  };
+  return labels[type] || type;
+}
+
+function formatDate(dateString) {
+  const date = new Date(dateString);
+  const now = new Date();
+  const diff = now - date;
+  const minutes = Math.floor(diff / 60000);
+  const hours = Math.floor(diff / 3600000);
+  const days = Math.floor(diff / 86400000);
+
+  if (minutes < 1) return 'Just now';
+  if (minutes < 60) return `${minutes}m ago`;
+  if (hours < 24) return `${hours}h ago`;
+  if (days < 7) return `${days}d ago`;
+  return date.toLocaleDateString();
+}
+
 function attachEventListeners() {
+  // View navigation
+  document.getElementById('showSettingsBtn').addEventListener('click', () => {
+    showView('settings');
+  });
+
+  document.getElementById('showHistoryBtn').addEventListener('click', () => {
+    showView('history');
+  });
+
+  document.getElementById('backButton').addEventListener('click', () => {
+    showView('main');
+  });
+
+  // Settings
   document
     .getElementById('saveSettings')
     .addEventListener('click', saveSettings);
   document
     .getElementById('resetSettings')
     .addEventListener('click', resetSettings);
-  document.getElementById('openOptions').addEventListener('click', openOptions);
-  document.getElementById('viewHistory').addEventListener('click', viewHistory);
+
+  // History
+  document
+    .getElementById('historyFilter')
+    .addEventListener('change', loadHistory);
+  document
+    .getElementById('clearHistory')
+    .addEventListener('click', clearHistory);
+
+  // Footer links
   document.getElementById('help').addEventListener('click', openHelp);
   document.getElementById('about').addEventListener('click', openAbout);
 }
@@ -74,6 +213,7 @@ function saveSettings() {
     chrome.runtime.sendMessage({ action: 'updateSettings' }, response => {
       if (response && response.success) {
         showToast('Settings saved successfully!', 'success');
+        setTimeout(() => showView('main'), 1000);
       }
     });
   });
@@ -92,13 +232,47 @@ function resetSettings() {
   }
 }
 
-function openOptions() {
-  chrome.runtime.openOptionsPage();
+function clearHistory() {
+  if (confirm('Are you sure you want to clear all history?')) {
+    chrome.storage.local.set({ processHistory: [] }, () => {
+      loadHistory();
+      showToast('History cleared');
+    });
+  }
 }
 
-function viewHistory() {
-  chrome.tabs.create({ url: 'history.html' });
-}
+// Global functions for history actions
+window.downloadHistoryItem = function (id) {
+  chrome.storage.local.get(['processHistory'], result => {
+    const history = result.processHistory || [];
+    const item = history.find(h => h.id === id);
+    if (item) {
+      chrome.downloads.download({
+        url: item.url,
+        filename: item.filename,
+      });
+      showToast('Download started');
+    }
+  });
+};
+
+window.copyHistoryItem = function (id) {
+  chrome.storage.local.get(['processHistory'], result => {
+    const history = result.processHistory || [];
+    const item = history.find(h => h.id === id);
+    if (item) {
+      fetch(item.url)
+        .then(res => res.blob())
+        .then(blob => {
+          const clipboardItem = new ClipboardItem({ [blob.type]: blob });
+          navigator.clipboard
+            .write([clipboardItem])
+            .then(() => showToast('Image copied to clipboard'))
+            .catch(err => showToast('Failed to copy image', 'error'));
+        });
+    }
+  });
+};
 
 function openHelp() {
   chrome.tabs.create({
@@ -121,6 +295,7 @@ function showToast(message, type = 'success') {
   }, 3000);
 }
 
+// Add password toggle functionality
 document.querySelectorAll('input[type="password"]').forEach(input => {
   const wrapper = document.createElement('div');
   wrapper.style.position = 'relative';
@@ -170,6 +345,7 @@ document.querySelectorAll('input[type="password"]').forEach(input => {
   wrapper.appendChild(toggleBtn);
 });
 
+// Listen for storage changes to update statistics in real-time
 chrome.storage.onChanged.addListener((changes, namespace) => {
   if (namespace === 'local') {
     if (changes.imagesProcessed) {
@@ -179,6 +355,10 @@ chrome.storage.onChanged.addListener((changes, namespace) => {
     if (changes.backgroundsRemoved) {
       document.getElementById('bgRemoved').textContent =
         changes.backgroundsRemoved.newValue || 0;
+    }
+    // Refresh history if it's currently visible and history changed
+    if (currentView === 'history' && changes.processHistory) {
+      loadHistory();
     }
   }
 });
