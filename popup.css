@@ -745,3 +745,23 @@ select {
   justify-content: center;
   line-height: 1;
 }
+
+/* Backend status indicator */
+.status-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.05);
+}
+.status-text {
+  font-weight: 600;
+  font-size: 14px;
+}
+.status-text.connected {
+  color: #10b981;
+}
+.status-text.disconnected {
+  color: #ef4444;
+}

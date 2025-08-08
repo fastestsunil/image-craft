@@ -23,7 +23,7 @@ function showView(viewName) {
   // Update header
   const backButton = document.getElementById('backButton');
   const headerTitle = document.getElementById('headerTitle');
-  
+
   if (viewName === 'main') {
     backButton.style.display = 'none';
     headerTitle.textContent = 'ImageCraft';
@@ -37,7 +37,7 @@ function showView(viewName) {
     loadHistory();
     // Ensure clear history button has event listener
     attachClearHistoryListener();
-    
+
     // Fallback: try again after a short delay
     setTimeout(() => {
       attachClearHistoryListener();
@@ -49,21 +49,8 @@ function showView(viewName) {
 
 function loadSettings() {
   chrome.storage.sync.get(
-    [
-      'cloudinaryCloudName',
-      'cloudinaryUploadPreset',
-      'removeBgApiKey',
-      'defaultFormat',
-      'autoDownload',
-      'showNotifications',
-    ],
+    ['defaultFormat', 'autoDownload', 'showNotifications'],
     settings => {
-      document.getElementById('cloudName').value =
-        settings.cloudinaryCloudName || '';
-      document.getElementById('uploadPreset').value =
-        settings.cloudinaryUploadPreset || '';
-      document.getElementById('removeBgKey').value =
-        settings.removeBgApiKey || '';
       document.getElementById('defaultFormat').value =
         settings.defaultFormat || 'png';
       document.getElementById('autoDownload').checked =
@@ -72,6 +59,22 @@ function loadSettings() {
         settings.showNotifications !== false;
     }
   );
+
+  // Check backend status
+  checkBackendStatus();
+}
+
+function checkBackendStatus() {
+  chrome.runtime.sendMessage({ action: 'checkBackendHealth' }, response => {
+    const statusElement = document.getElementById('backendStatus');
+    if (response && response.success && response.isAvailable) {
+      statusElement.textContent = 'Connected';
+      statusElement.className = 'status-text connected';
+    } else {
+      statusElement.textContent = 'Disconnected';
+      statusElement.className = 'status-text disconnected';
+    }
+  });
 }
 
 function loadStatistics() {
@@ -236,28 +239,14 @@ function attachClearHistoryListener() {
 
 function saveSettings() {
   const settings = {
-    cloudinaryCloudName: document.getElementById('cloudName').value.trim(),
-    cloudinaryUploadPreset: document
-      .getElementById('uploadPreset')
-      .value.trim(),
-    removeBgApiKey: document.getElementById('removeBgKey').value.trim(),
     defaultFormat: document.getElementById('defaultFormat').value,
     autoDownload: document.getElementById('autoDownload').checked,
     showNotifications: document.getElementById('showNotifications').checked,
   };
 
-  if (!settings.cloudinaryCloudName || !settings.cloudinaryUploadPreset) {
-    showToast('Please provide Cloudinary credentials', 'error');
-    return;
-  }
-
   chrome.storage.sync.set(settings, () => {
-    chrome.runtime.sendMessage({ action: 'updateSettings' }, response => {
-      if (response && response.success) {
-        showToast('Settings saved successfully!', 'success');
-        setTimeout(() => showView('main'), 1000);
-      }
-    });
+    showToast('Settings saved successfully!', 'success');
+    setTimeout(() => showView('main'), 1000);
   });
 }
 
@@ -276,24 +265,28 @@ function resetSettings() {
 
 function clearHistory() {
   console.log('Clear history button clicked');
-  
-  if (confirm('Are you sure you want to clear all history? This action cannot be undone.')) {
+
+  if (
+    confirm(
+      'Are you sure you want to clear all history? This action cannot be undone.'
+    )
+  ) {
     console.log('User confirmed clear history');
-    
+
     // Show loading state on the button
     const clearBtn = document.getElementById('clearHistory');
     if (clearBtn) {
       clearBtn.textContent = 'Clearing...';
       clearBtn.disabled = true;
     }
-    
+
     chrome.storage.local.set({ processHistory: [] }, () => {
       // Reset button state
       if (clearBtn) {
         clearBtn.textContent = 'Clear All';
         clearBtn.disabled = false;
       }
-      
+
       if (chrome.runtime.lastError) {
         console.error('Error clearing history:', chrome.runtime.lastError);
         showToast('Failed to clear history', 'error');
@@ -301,14 +294,17 @@ function clearHistory() {
         console.log('History cleared successfully');
         loadHistory();
         showToast('All history cleared successfully', 'success');
-        
+
         // Also reset statistics
-        chrome.storage.local.set({ 
-          imagesProcessed: 0, 
-          backgroundsRemoved: 0 
-        }, () => {
-          loadStatistics();
-        });
+        chrome.storage.local.set(
+          {
+            imagesProcessed: 0,
+            backgroundsRemoved: 0,
+          },
+          () => {
+            loadStatistics();
+          }
+        );
       }
     });
   } else {

@@ -1,11 +1,160 @@
-// Default values - users must configure their own
-const CLOUDINARY_CLOUD_NAME = '';
-const CLOUDINARY_UPLOAD_PRESET = '';
-const REMOVE_BG_API_KEY = '';
+// Backend configuration
+const BACKEND_URL = 'http://localhost:5001/api';
+let authToken = null;
+let isBackendAvailable = false;
+
+// Check backend availability on startup
+checkBackendHealth();
 
 chrome.runtime.onInstalled.addListener(() => {
   createContextMenus();
   loadSettings();
+  checkBackendHealth();
+});
+
+// Check if backend is available
+async function checkBackendHealth() {
+  try {
+    const response = await fetch('http://localhost:5001/health');
+    isBackendAvailable = response.ok;
+    console.log('Backend health check:', isBackendAvailable ? 'OK' : 'Failed');
+  } catch (error) {
+    isBackendAvailable = false;
+    console.log('Backend not available:', error.message);
+  }
+}
+
+// Backend API functions
+async function makeBackendRequest(endpoint, options = {}) {
+  if (!isBackendAvailable) {
+    throw new Error('Backend is not available');
+  }
+
+  const url = `${BACKEND_URL}${endpoint}`;
+  const config = {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(authToken && { Authorization: `Bearer ${authToken}` }),
+      ...options.headers,
+    },
+    ...options,
+  };
+
+  const response = await fetch(url, config);
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.message || 'Backend request failed');
+  }
+
+  return data;
+}
+
+// Authentication functions
+async function loginToBackend(email, password) {
+  try {
+    const data = await makeBackendRequest('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    });
+
+    authToken = data.data.token;
+    chrome.storage.local.set({ authToken });
+
+    return data.data.user;
+  } catch (error) {
+    console.error('Backend login failed:', error);
+    throw error;
+  }
+}
+
+async function registerToBackend(name, email, password) {
+  try {
+    const data = await makeBackendRequest('/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({ name, email, password }),
+    });
+
+    authToken = data.data.token;
+    chrome.storage.local.set({ authToken });
+
+    return data.data.user;
+  } catch (error) {
+    console.error('Backend registration failed:', error);
+    throw error;
+  }
+}
+
+async function getCurrentUser() {
+  try {
+    const data = await makeBackendRequest('/auth/me');
+    return data.data.user;
+  } catch (error) {
+    console.error('Failed to get current user:', error);
+    return null;
+  }
+}
+
+// Load auth token on startup
+chrome.storage.local.get(['authToken'], result => {
+  if (result.authToken) {
+    authToken = result.authToken;
+    console.log('Auth token loaded from storage');
+  }
+});
+
+// Handle messages from popup
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.action === 'login') {
+    loginToBackend(request.email, request.password)
+      .then(user => {
+        sendResponse({ success: true, user });
+      })
+      .catch(error => {
+        sendResponse({ success: false, error: error.message });
+      });
+    return true; // Keep message channel open for async response
+  }
+
+  if (request.action === 'register') {
+    registerToBackend(request.name, request.email, request.password)
+      .then(user => {
+        sendResponse({ success: true, user });
+      })
+      .catch(error => {
+        sendResponse({ success: false, error: error.message });
+      });
+    return true;
+  }
+
+  if (request.action === 'getCurrentUser') {
+    getCurrentUser()
+      .then(user => {
+        sendResponse({ success: true, user });
+      })
+      .catch(error => {
+        sendResponse({ success: false, error: error.message });
+      });
+    return true;
+  }
+
+  if (request.action === 'logout') {
+    authToken = null;
+    chrome.storage.local.remove(['authToken']);
+    sendResponse({ success: true });
+  }
+
+  if (request.action === 'checkBackendHealth') {
+    checkBackendHealth()
+      .then(() => {
+        sendResponse({ success: true, isAvailable: isBackendAvailable });
+      })
+      .catch(() => {
+        sendResponse({ success: false, isAvailable: false });
+      });
+    return true;
+  }
 });
 
 function createContextMenus() {
@@ -154,7 +303,25 @@ async function saveImageAs(imageUrl, format, tabId) {
     console.log('Starting image conversion:', { imageUrl, format });
     showLoadingIndicator(tabId, 'Converting image...');
 
-    const processedUrl = await processImageWithCloudinary(imageUrl, format);
+    let processedUrl;
+
+    // Use backend for all image processing
+    if (isBackendAvailable && authToken) {
+      try {
+        processedUrl = await processImageWithBackend(imageUrl, format);
+        console.log('Image processed via backend');
+      } catch (backendError) {
+        console.error('Backend processing failed:', backendError.message);
+        throw new Error(
+          'Image processing failed. Please ensure you are logged in and try again.'
+        );
+      }
+    } else {
+      throw new Error(
+        'Backend is not available. Please log in to use ImageCraft.'
+      );
+    }
+
     console.log('Image processed, URL:', processedUrl);
 
     const filename = generateFilename(imageUrl, format);
@@ -206,8 +373,27 @@ async function copyImageAs(imageUrl, format, tabId) {
   try {
     showLoadingIndicator(tabId, 'Converting image...');
 
-    const processedUrl = await processImageWithCloudinary(imageUrl, format);
-    console.log('Image processed for copy, URL:', processedUrl);
+    let processedUrl;
+
+    // Use backend for all image processing
+    if (isBackendAvailable && authToken) {
+      try {
+        processedUrl = await processImageWithBackend(imageUrl, format);
+        console.log('Image processed for copy via backend, URL:', processedUrl);
+      } catch (backendError) {
+        console.error(
+          'Backend processing failed for copy:',
+          backendError.message
+        );
+        throw new Error(
+          'Image processing failed. Please ensure you are logged in and try again.'
+        );
+      }
+    } else {
+      throw new Error(
+        'Backend is not available. Please log in to use ImageCraft.'
+      );
+    }
 
     const response = await fetch(processedUrl);
     const blob = await response.blob();
@@ -267,8 +453,27 @@ async function copyImageWithoutBackground(imageUrl, tabId) {
   try {
     showLoadingIndicator(tabId, 'Removing background...');
 
-    const settings = await getSettings();
-    const bgRemovedUrl = await removeBackground(imageUrl, settings);
+    let bgRemovedUrl;
+
+    // Use backend for all background removal
+    if (isBackendAvailable && authToken) {
+      try {
+        bgRemovedUrl = await removeBackgroundWithBackend(imageUrl);
+        console.log('Background removed via backend');
+      } catch (backendError) {
+        console.error(
+          'Backend background removal failed:',
+          backendError.message
+        );
+        throw new Error(
+          'Background removal failed. Please ensure you are logged in and try again.'
+        );
+      }
+    } else {
+      throw new Error(
+        'Backend is not available. Please log in to use ImageCraft.'
+      );
+    }
 
     const response = await fetch(bgRemovedUrl);
     const blob = await response.blob();
@@ -320,155 +525,55 @@ async function copyImageWithoutBackground(imageUrl, tabId) {
   }
 }
 
-async function processImageWithCloudinary(imageUrl, format) {
-  const settings = await getSettings();
-  const cloudName = settings.cloudinaryCloudName || CLOUDINARY_CLOUD_NAME;
-  const uploadPreset =
-    settings.cloudinaryUploadPreset || CLOUDINARY_UPLOAD_PRESET;
-
-  console.log('Cloudinary settings:', { cloudName, uploadPreset });
-
-  if (!cloudName || cloudName.trim() === '') {
+// This function is no longer needed as backend handles all Cloudinary operations
+async function processImageWithBackend(imageUrl, format) {
+  if (!isBackendAvailable || !authToken) {
     throw new Error(
-      'Please configure your Cloudinary cloud name in extension settings'
+      'Backend is not available. Please ensure you are logged in.'
     );
   }
 
-  if (!uploadPreset || uploadPreset.trim() === '') {
+  try {
+    const data = await makeBackendRequest('/images/convert', {
+      method: 'POST',
+      body: JSON.stringify({
+        imageUrl,
+        format,
+        quality: 80,
+      }),
+    });
+
+    return data.data.image.processedUrl;
+  } catch (error) {
+    console.error('Backend image processing failed:', error);
+    throw new Error('Failed to process image. Please try again.');
+  }
+}
+
+async function removeBackgroundWithBackend(imageUrl) {
+  if (!isBackendAvailable || !authToken) {
     throw new Error(
-      'Please configure your Cloudinary upload preset in extension settings'
+      'Backend is not available. Please ensure you are logged in.'
     );
   }
 
-  const uploadUrl = `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`;
-  console.log('Upload URL:', uploadUrl);
-
-  const formData = new FormData();
-  formData.append('file', imageUrl);
-  formData.append('upload_preset', uploadPreset);
-  // Don't add format here - unsigned uploads don't allow it
-
   try {
-    const response = await fetch(uploadUrl, {
+    const data = await makeBackendRequest('/images/remove-background', {
       method: 'POST',
-      body: formData,
+      body: JSON.stringify({
+        imageUrl,
+        quality: 80,
+      }),
     });
 
-    const data = await response.json();
-    console.log('Cloudinary response:', data);
-
-    if (!response.ok) {
-      console.error('Cloudinary error:', data);
-      if (data.error) {
-        throw new Error(`Cloudinary error: ${data.error.message}`);
-      }
-      throw new Error('Failed to process image with Cloudinary');
-    }
-
-    // Now apply format transformation in the URL
-    if (data.secure_url) {
-      // Extract the public_id and build a new URL with format transformation
-      const publicId = data.public_id;
-      const version = data.version ? `v${data.version}/` : '';
-
-      // Build URL with format transformation
-      const transformedUrl = `https://res.cloudinary.com/${cloudName}/image/upload/f_${format}/${version}${publicId}`;
-      console.log('Transformed URL with format:', transformedUrl);
-
-      return transformedUrl;
-    }
-
-    return data.secure_url;
+    return data.data.image.processedUrl;
   } catch (error) {
-    console.error('Fetch error:', error);
-    throw error;
+    console.error('Backend background removal failed:', error);
+    throw new Error('Failed to remove background. Please try again.');
   }
 }
 
-async function removeBackground(imageUrl, settings) {
-  const cloudName = settings.cloudinaryCloudName || CLOUDINARY_CLOUD_NAME;
-  const uploadPreset =
-    settings.cloudinaryUploadPreset || CLOUDINARY_UPLOAD_PRESET;
-
-  console.log('Starting background removal with Cloudinary AI...');
-
-  // First, upload the image to Cloudinary
-  const uploadUrl = `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`;
-
-  const formData = new FormData();
-  formData.append('file', imageUrl);
-  formData.append('upload_preset', uploadPreset);
-
-  try {
-    const response = await fetch(uploadUrl, {
-      method: 'POST',
-      body: formData,
-    });
-
-    const data = await response.json();
-    console.log('Image uploaded for background removal:', data);
-
-    if (!response.ok) {
-      console.error('Upload failed:', data);
-      // Fallback to Remove.bg API if available
-      const apiKey = settings.removeBgApiKey || REMOVE_BG_API_KEY;
-      if (apiKey) {
-        console.log('Falling back to Remove.bg API...');
-        return await removeBackgroundWithAPI(imageUrl, apiKey);
-      }
-      throw new Error(
-        `Upload failed: ${data.error?.message || 'Unknown error'}`
-      );
-    }
-
-    // Build URL with background removal transformation
-    const publicId = data.public_id;
-    const version = data.version ? `v${data.version}/` : '';
-
-    // Use Cloudinary's built-in background removal effect (e_background_removal)
-    // Combined with PNG format for transparency
-    const bgRemovedUrl = `https://res.cloudinary.com/${cloudName}/image/upload/e_background_removal/f_png/${version}${publicId}`;
-
-    console.log('Background removed URL:', bgRemovedUrl);
-
-    // Note: First request might take a few seconds as Cloudinary processes the image
-    // Subsequent requests will be cached
-
-    return bgRemovedUrl;
-  } catch (error) {
-    console.error('Background removal error:', error);
-
-    // Try Remove.bg API as fallback if available
-    const apiKey = settings.removeBgApiKey || REMOVE_BG_API_KEY;
-    if (apiKey) {
-      console.log('Attempting Remove.bg API as fallback...');
-      return await removeBackgroundWithAPI(imageUrl, apiKey);
-    }
-
-    throw error;
-  }
-}
-
-async function removeBackgroundWithAPI(imageUrl, apiKey) {
-  const response = await fetch('https://api.remove.bg/v1.0/removebg', {
-    method: 'POST',
-    headers: {
-      'X-Api-Key': apiKey,
-    },
-    body: JSON.stringify({
-      image_url: imageUrl,
-      size: 'auto',
-      format: 'png',
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error('Failed to remove background with Remove.bg API');
-  }
-
-  const blob = await response.blob();
-  return URL.createObjectURL(blob);
-}
+// Remove.bg API function removed - backend handles all background removal
 
 function copyBlobToClipboard(base64Data, mimeType) {
   return new Promise((resolve, reject) => {
@@ -625,9 +730,13 @@ function showPageError(tabId, message) {
 async function loadSettings() {
   return new Promise(resolve => {
     chrome.storage.sync.get(
-      ['cloudinaryCloudName', 'cloudinaryUploadPreset', 'removeBgApiKey'],
+      ['defaultFormat', 'autoDownload', 'showNotifications'],
       settings => {
-        resolve(settings);
+        resolve({
+          defaultFormat: settings.defaultFormat || 'png',
+          autoDownload: settings.autoDownload !== false,
+          showNotifications: settings.showNotifications !== false,
+        });
       }
     );
   });
